@@ -4,6 +4,48 @@
     <title>Certificate Preview</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="stylesheet" href="/static/css/preview.css">
+    <style>
+        /* Email modal styles */
+        .email-status-message {
+            font-size: 18px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .success-message {
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .warning-message {
+            color: #ffc107;
+            font-weight: bold;
+        }
+        
+        .email-details {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .details {
+            margin-top: 10px;
+        }
+        
+        /* Email form styles */
+        .email-form-row textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 80px;
+        }
+    </style>
 </head>
 <body>
     <div class="preview-container">
@@ -15,27 +57,144 @@
         
         <div class="certificates-grid" id="certificatesGrid">
             {% for cert_file in certificate_files %}
-            <div class="certificate-item">
+            <div class="certificate-item" onclick="openCertificateModal('{{ cert_file }}', {{ loop.index }}, '{{ student_names[loop.index0] if student_names and loop.index0 < student_names|length else 'Student ' + loop.index|string }}')">
                 <img src="/static/generated/{{ session_id }}/{{ cert_file }}" 
                      alt="Certificate {{ loop.index }}" 
                      class="certificate-image"
                      onerror="this.style.display='none'; this.nextElementSibling.innerHTML='<div class=\'error\'>Image not found</div>';">
                 <div class="certificate-name">Certificate {{ loop.index }}</div>
                 <div class="certificate-number">{{ cert_file }}</div>
+                <div class="student-name">
+                    {% if student_names and loop.index0 < student_names|length %}
+                        {{ student_names[loop.index0] }}
+                    {% else %}
+                        Student {{ loop.index }}
+                    {% endif %}
+                </div>
+                <div class="click-hint">Click to view full size</div>
             </div>
             {% endfor %}
         </div>
         
         <div class="action-buttons">
-            <a href="/download" class="btn btn-download">
-                📥 Download All Certificates (ZIP)
-            </a>
+            <div class="download-dropdown">
+                <button type="button" class="btn btn-download" onclick="toggleDownloadMenu()">📥 Download All Certificates</button>
+                <div id="downloadMenu" class="dropdown-menu">
+                    <a href="/download?format=zip">Download as ZIP</a>
+                    <a href="/download?format=pdf">Download as PDF</a>
+                </div>
+            </div>
+            <form action="/send_emails" method="post" class="email-form">
+                <div class="email-form-row">
+                    <input type="email" name="sender_email" placeholder="Sender email" required>
+                    <input type="password" name="sender_password" placeholder="App password" required>
+                    <input type="text" name="smtp_host" placeholder="SMTP host (e.g., smtp.gmail.com)" required>
+                    <input type="number" name="smtp_port" placeholder="Port (e.g., 587)" value="587" required>
+                </div>
+                <div class="email-form-row">
+                    <input type="text" name="subject" placeholder="Email subject" value="Your Certificate" required>
+                </div>
+                <div class="email-form-row">
+                    <textarea name="body" placeholder="Email body (plain text)" rows="4" required>Please find your certificate attached.</textarea>
+                </div>
+                <button type="submit" class="btn btn-download">✉️ Send All to Emails</button>
+            </form>
             <a href="/back_to_generate" class="btn btn-back">
                 🔄 Generate New Certificates
             </a>
         </div>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flashes">
+            {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+    </div>
+    
+    <!-- Email Send Confirmation Modal -->
+    <div id="emailModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="emailModalTitle">📧 Email Send Results</h2>
+                <span class="close" onclick="closeEmailModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="emailModalMessage" class="email-status-message"></div>
+                <div id="emailModalDetails" class="email-details"></div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeEmailModal()" class="btn btn-close">Close</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Certificate Modal -->
+    <div id="certificateModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Certificate Preview</h2>
+                <span class="close" onclick="closeCertificateModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <img id="modalImage" src="" alt="Certificate" class="modal-certificate-image">
+                <div class="modal-info">
+                    <div id="modalStudentName" class="modal-student-name"></div>
+                    <div id="modalCertificateNumber" class="modal-certificate-number"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="downloadSingleCertificate()" class="btn btn-download-single">
+                    📥 Download This Certificate
+                </button>
+                <button onclick="closeCertificateModal()" class="btn btn-close">
+                    Close
+                </button>
+            </div>
+        </div>
     </div>
     
     <script src="/static/js/preview.js"></script>
+    <script>
+        // Email modal functions
+        function closeEmailModal() {
+            document.getElementById('emailModal').style.display = 'none';
+        }
+        
+        function showEmailModal(title, message, details) {
+            document.getElementById('emailModalTitle').textContent = title;
+            document.getElementById('emailModalMessage').innerHTML = message;
+            document.getElementById('emailModalDetails').innerHTML = details || '';
+            document.getElementById('emailModal').style.display = 'block';
+        }
+        
+        // Check for email send results on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const emailSent = urlParams.get('email_sent');
+            const emailSuccess = urlParams.get('email_success');
+            const emailMessage = urlParams.get('email_message');
+            const emailDetails = urlParams.get('email_details');
+            
+            if (emailSent === 'true') {
+                let title, message, details;
+                if (emailSuccess === 'true') {
+                    title = '✅ Certificates Sent Successfully!';
+                    message = `<div class="success-message">${emailMessage || 'All certificates have been sent to student emails.'}</div>`;
+                } else {
+                    title = '⚠️ Email Send Results';
+                    message = `<div class="warning-message">${emailMessage || 'Some certificates could not be sent.'}</div>`;
+                }
+                details = emailDetails ? `<div class="details">${emailDetails}</div>` : '';
+                showEmailModal(title, message, details);
+                
+                // Clean up URL parameters
+                const newUrl = window.location.pathname;
+                window.history.replaceState({}, document.title, newUrl);
+            }
+        });
+    </script>
 </body>
 </html> 

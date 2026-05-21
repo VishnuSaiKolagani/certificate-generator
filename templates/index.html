@@ -56,6 +56,91 @@
             margin-bottom: 20px;
             border-left: 4px solid #28a745;
         }
+        
+        /* Multiple Signature Styles */
+        #signatureContainer {
+            margin-bottom: 15px;
+        }
+        
+        .signature-field {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            position: relative;
+        }
+        
+        .signature-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .signature-header label {
+            font-weight: bold;
+            color: #333;
+            margin: 0;
+        }
+        
+        .remove-signature {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .remove-signature:hover {
+            background: #c82333;
+        }
+        
+        .signature-input {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        
+        .signature-size-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .signature-size-container label {
+            font-size: 14px;
+            color: #666;
+            margin: 0;
+        }
+        
+        .signature-size {
+            width: 80px;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        
+        .add-signature-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        
+        .add-signature-btn:hover {
+            background: #218838;
+        }
     </style>
 </head>
 <body>
@@ -77,10 +162,29 @@
                 <option value="Pacifico-Regular.ttf" {% if form_data and form_data.font_name == 'Pacifico-Regular.ttf' %}selected{% endif %}>Pacifico</option>
                 <option value="Allura-Regular.ttf" {% if form_data and form_data.font_name == 'Allura-Regular.ttf' %}selected{% endif %}>Allura</option>
                 <option value="Satisfy-Regular.ttf" {% if form_data and form_data.font_name == 'Satisfy-Regular.ttf' %}selected{% endif %}>Satisfy</option>
+                <option value="AlexBrush-Regular.ttf" {% if form_data and form_data.font_name == 'AlexBrush-Regular.ttf' %}selected{% endif %}>Alex Brush</option>
+                <option value="EdwardianScriptITC.ttf" {% if form_data and form_data.font_name == 'EdwardianScriptITC.ttf' %}selected{% endif %}>Edwardian Script ITC</option>
             </select><br><br>
 
             <label>Font Size</label><br>
             <input type="number" name="fontsize" value="{{ form_data.font_size if form_data and form_data.font_size else 36 }}" required><br><br>
+
+            <label>Digital Signatures (Optional)</label><br>
+            <div id="signatureContainer">
+                <div class="signature-field" data-signature-index="1">
+                    <div class="signature-header">
+                        <label>Signature 1</label>
+                        <button type="button" class="remove-signature" onclick="removeSignature(this)" style="display: none;">×</button>
+                    </div>
+                    <input type="file" name="signature1" accept="image/*" class="signature-input">
+                    <div class="signature-size-container">
+                        <label>Size (percentage):</label>
+                        <input type="number" name="signature1_size" value="20" min="5" max="100" step="5" class="signature-size">
+                    </div>
+                </div>
+            </div>
+            <button type="button" id="addSignatureBtn" class="add-signature-btn">+ Add Another Signature</button>
+            <small>Upload signature images (PNG with transparent background recommended)</small><br><br>
 
             <button type="submit">Generate Certificates</button>
         </form>
@@ -90,23 +194,94 @@
         <h2>Position Placeholders</h2>
         <input type="file" id="bgInput" accept="image/*"><br>
         <canvas id="editorCanvas" width="1000" height="700"></canvas><br>
-        <input type="text" id="fieldText" placeholder="e.g. name, event"><br>
+        <input type="text" id="fieldText" placeholder="e.g. name, event, signature"><br>
         <button onclick="addField()">Add Field</button>
         <button onclick="undoField()">Undo</button>
         <button onclick="saveLayout()">Save Layout</button>
         <div id="restoredFieldsInfo" style="margin-top:10px;color:#155724;font-size:14px;display:none;">Previously added fields have been restored. You can add more fields below.</div>
+        <div style="margin-top:10px;color:#666;font-size:12px;">
+            <strong>Tip:</strong> Type "signature" in the field box and click to position signatures on the canvas. You can add multiple signatures by typing "signature" again and clicking different positions.
+        </div>
     </div>
 
-    <script>
-        window.formData = {{ form_data|tojson|safe if form_data else 'null' }};
-        window.sessionData = {{ session.certificate_session|tojson|safe if session.certificate_session else 'null' }};
-    </script>
+    <script id="formDataJson" type="application/json">{{ form_data|tojson|safe if form_data else 'null' }}</script>
+    <script id="sessionDataJson" type="application/json">{{ session.certificate_session|tojson|safe if session.certificate_session else 'null' }}</script>
     <script src="/static/js/script.js"></script>
     <script>
         function toggleLayoutConfig() {
             const section = document.getElementById('layoutSection');
             section.classList.toggle('show');
         }
+
+        // Multiple Signature Management
+        let signatureCount = 1;
+        
+        function addSignature() {
+            signatureCount++;
+            const container = document.getElementById('signatureContainer');
+            const newSignature = document.createElement('div');
+            newSignature.className = 'signature-field';
+            newSignature.setAttribute('data-signature-index', signatureCount);
+            
+            newSignature.innerHTML = `
+                <div class="signature-header">
+                    <label>Signature ${signatureCount}</label>
+                    <button type="button" class="remove-signature" onclick="removeSignature(this)">×</button>
+                </div>
+                <input type="file" name="signature${signatureCount}" accept="image/*" class="signature-input">
+                <div class="signature-size-container">
+                    <label>Size (percentage):</label>
+                    <input type="number" name="signature${signatureCount}_size" value="20" min="5" max="100" step="5" class="signature-size">
+                </div>
+            `;
+            
+            container.appendChild(newSignature);
+            updateRemoveButtons();
+        }
+        
+        function removeSignature(button) {
+            const signatureField = button.closest('.signature-field');
+            signatureField.remove();
+            updateRemoveButtons();
+            updateSignatureNumbers();
+        }
+        
+        function updateRemoveButtons() {
+            const signatureFields = document.querySelectorAll('.signature-field');
+            signatureFields.forEach((field, index) => {
+                const removeBtn = field.querySelector('.remove-signature');
+                if (signatureFields.length === 1) {
+                    removeBtn.style.display = 'none';
+                } else {
+                    removeBtn.style.display = 'flex';
+                }
+            });
+        }
+        
+        function updateSignatureNumbers() {
+            const signatureFields = document.querySelectorAll('.signature-field');
+            signatureFields.forEach((field, index) => {
+                const label = field.querySelector('.signature-header label');
+                const fileInput = field.querySelector('.signature-input');
+                const sizeInput = field.querySelector('.signature-size');
+                const newIndex = index + 1;
+                
+                label.textContent = `Signature ${newIndex}`;
+                fileInput.name = `signature${newIndex}`;
+                sizeInput.name = `signature${newIndex}_size`;
+                field.setAttribute('data-signature-index', newIndex);
+            });
+            signatureCount = signatureFields.length;
+        }
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateRemoveButtons();
+            
+            // Add event listener for add signature button
+            document.getElementById('addSignatureBtn').addEventListener('click', addSignature);
+        });
+
     </script>
 </body>
 </html>
